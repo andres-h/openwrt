@@ -282,6 +282,22 @@ endef
 $(eval $(call KernelPackage,gpio-pcf857x))
 
 
+define KernelPackage/gpio-vdx
+  SUBMENU:=$(OTHER_MENU)
+  DEPENDS:=@GPIO_SUPPORT
+  TITLE:=DMP Vortex86 SX/DX/MX GPIO support
+  KCONFIG:=CONFIG_GPIO_VDX
+  FILES:=$(LINUX_DIR)/drivers/gpio/gpio-vdx.ko
+  AUTOLOAD:=$(call AutoProbe,gpio-vdx)
+endef
+
+define KernelPackage/gpio-vdx/description
+ Kernel module for DMP Vortex86 SX/DX/MX GPIO
+endef
+
+$(eval $(call KernelPackage,gpio-vdx))
+
+
 define KernelPackage/ppdev
   SUBMENU:=$(OTHER_MENU)
   TITLE:=Parallel port support
@@ -726,6 +742,24 @@ define KernelPackage/serial-8250-exar/description
 endef
 
 $(eval $(call KernelPackage,serial-8250-exar))
+
+
+define KernelPackage/serial-sc16is7xx
+  SUBMENU:=$(OTHER_MENU)
+  TITLE:=SC16IS7XX UARTs
+  KCONFIG:= CONFIG_SERIAL_SC16IS7XX \
+	CONFIG_SERIAL_SC16IS7XX_I2C=y \
+	CONFIG_SERIAL_SC16IS7XX_SPI=y
+  FILES:=$(LINUX_DIR)/drivers/tty/serial/sc16is7xx.ko
+  AUTOLOAD:=$(call AutoProbe,sc16is7xx)
+  DEPENDS:=+kmod-i2c-core +kmod-regmap-i2c +kmod-regmap-spi
+endef
+
+define KernelPackage/serial-sc16is7xx/description
+ Kernel module for SC16IS7XX serial ports
+endef
+
+$(eval $(call KernelPackage,serial-sc16is7xx))
 
 
 define KernelPackage/regmap-core

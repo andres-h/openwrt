@@ -201,7 +201,7 @@ proto_qmi_setup() {
 		else
 			echo "Network registration failed"
 			proto_notify_error "$interface" NETWORK_REGISTRATION_FAILED
-			proto_block_restart "$interface"
+			#proto_block_restart "$interface"
 			return 1
 		fi
 	done

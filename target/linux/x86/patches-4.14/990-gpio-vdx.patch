@@ -1,0 +1,243 @@
+--- /dev/null
++++ b/drivers/gpio/gpio-vdx.c
+@@ -0,0 +1,215 @@
++/*
++ * GPIO driver for the DMP Vortex86 SX/DX/MX SoC
++ * (C) 2019 Andres Heinloo, Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License, version 2, as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ */
++#include <linux/bitops.h>
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/gpio/driver.h>
++#include <linux/io.h>
++#include <linux/ioport.h>
++#include <linux/interrupt.h>
++#include <linux/irqdesc.h>
++#include <linux/isa.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/spinlock.h>
++
++#define VDX_NGPIO       24
++#define VDX_GPIO_DATA   0x78
++#define VDX_GPIO_DIR    0x98
++#define VDX_GPIO_EXTENT (VDX_NGPIO >> 3)
++
++/**
++ * struct vdx_gpio - GPIO device private data structure
++ * @chip:	instance of the gpio_chip
++ * @lock:	synchronization lock to prevent I/O race conditions
++ * @out_state:	output bits state
++ * @dir_state:	direction bits state
++ */
++struct vdx_gpio {
++	struct gpio_chip chip;
++	spinlock_t lock;
++	unsigned out_state;
++	unsigned dir_state;
++};
++
++static int vdx_gpio_get_direction(struct gpio_chip *chip, unsigned offset)
++{
++	struct vdx_gpio *const g = gpiochip_get_data(chip);
++	const unsigned mask = BIT(offset);
++
++	return !(g->dir_state & mask);
++}
++
++static void vdx_gpio_set_direction(struct gpio_chip *chip, unsigned offset, int dir)
++{
++	struct vdx_gpio *const g = gpiochip_get_data(chip);
++	const unsigned mask = BIT(offset);
++	unsigned long flags;
++
++	spin_lock_irqsave(&g->lock, flags);
++
++	if (!dir)
++		g->dir_state |= mask;
++	else
++		g->dir_state &= ~mask;
++
++	if (offset < 8)
++		outb(g->dir_state, VDX_GPIO_DIR);
++	else if (offset < 16)
++		outb(g->dir_state >> 8, VDX_GPIO_DIR + 1);
++	else
++		outb(g->dir_state >> 16, VDX_GPIO_DIR + 2);
++
++	spin_unlock_irqrestore(&g->lock, flags);
++}
++
++static int vdx_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
++{
++	vdx_gpio_set_direction(chip, offset, 1);
++	return 0;
++}
++
++static int vdx_gpio_direction_output(struct gpio_chip *chip,
++	unsigned offset, int value)
++{
++	vdx_gpio_set_direction(chip, offset, 0);
++	chip->set(chip, offset, value);
++	return 0;
++}
++
++static int vdx_gpio_get(struct gpio_chip *chip, unsigned offset)
++{
++	const unsigned mask = BIT(offset);
++
++	if (offset < 8)
++		return !!(inb(VDX_GPIO_DATA) & mask);
++
++	if (offset < 16)
++		return !!(inb(VDX_GPIO_DATA + 1) & mask >> 8);
++
++	return !!(inb(VDX_GPIO_DATA + 2) & mask >> 16);
++}
++
++static void vdx_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
++{
++	struct vdx_gpio *const g = gpiochip_get_data(chip);
++	const unsigned mask = BIT(offset);
++	unsigned long flags;
++
++	spin_lock_irqsave(&g->lock, flags);
++
++	if (value)
++		g->out_state |= mask;
++	else
++		g->out_state &= ~mask;
++
++	if (offset < 8)
++		outb(g->out_state, VDX_GPIO_DATA);
++	else if (offset < 16)
++		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
++	else
++		outb(g->out_state >> 16, VDX_GPIO_DATA + 2);
++
++	spin_unlock_irqrestore(&g->lock, flags);
++}
++
++static void vdx_gpio_set_multiple(struct gpio_chip *chip,
++	unsigned long *mask, unsigned long *bits)
++{
++	struct vdx_gpio *const g = gpiochip_get_data(chip);
++	unsigned long flags;
++
++	spin_lock_irqsave(&g->lock, flags);
++
++	g->out_state &= ~*mask;
++	g->out_state |= *mask & *bits;
++
++	if (*mask & 0xFF)
++		outb(g->out_state, VDX_GPIO_DATA);
++
++	if ((*mask >> 8) & 0xFF)
++		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
++
++	if ((*mask >> 16) & 0xFF)
++		outb(g->out_state >> 16, VDX_GPIO_DATA + 2);
++
++	spin_unlock_irqrestore(&g->lock, flags);
++}
++
++static int vdx_gpio_probe(struct device *dev, unsigned int id)
++{
++	struct vdx_gpio *g;
++	const char *const name = dev_name(dev);
++	int err;
++
++	g = devm_kzalloc(dev, sizeof(*g), GFP_KERNEL);
++	if (!g)
++		return -ENOMEM;
++
++	if (!devm_request_region(dev, VDX_GPIO_DATA, VDX_GPIO_EXTENT, name)) {
++		dev_err(dev, "Unable to lock port addresses (0x%X-0x%X)\n",
++			VDX_GPIO_DATA, VDX_GPIO_DATA + VDX_GPIO_EXTENT);
++		return -EBUSY;
++	}
++
++	if (!devm_request_region(dev, VDX_GPIO_DIR, VDX_GPIO_EXTENT, name)) {
++		dev_err(dev, "Unable to lock port addresses (0x%X-0x%X)\n",
++			VDX_GPIO_DIR, VDX_GPIO_DIR + VDX_GPIO_EXTENT);
++		return -EBUSY;
++	}
++
++	g->chip.label = name;
++	g->chip.parent = dev;
++	g->chip.owner = THIS_MODULE;
++	g->chip.base = 0;
++	g->chip.ngpio = VDX_NGPIO;
++	g->chip.get_direction = vdx_gpio_get_direction;
++	g->chip.direction_input = vdx_gpio_direction_input;
++	g->chip.direction_output = vdx_gpio_direction_output;
++	g->chip.get = vdx_gpio_get;
++	g->chip.set = vdx_gpio_set;
++	g->chip.set_multiple = vdx_gpio_set_multiple;
++
++	g->out_state = inb(VDX_GPIO_DATA) |
++		       (inb(VDX_GPIO_DATA + 1) << 8) |
++		       (inb(VDX_GPIO_DATA + 2) << 16);
++
++	g->dir_state = inb(VDX_GPIO_DIR) |
++		       (inb(VDX_GPIO_DIR + 1) << 8) |
++		       (inb(VDX_GPIO_DIR + 2) << 16);
++
++	spin_lock_init(&g->lock);
++
++	err = devm_gpiochip_add_data(dev, &g->chip, g);
++	if (err) {
++		dev_err(dev, "GPIO registering failed (%d)\n", err);
++		return err;
++	}
++
++	return 0;
++}
++
++static struct isa_driver vdx_gpio_driver = {
++	.probe = vdx_gpio_probe,
++	.driver = {
++		.name = "vdx-gpio"
++	},
++};
++
++module_isa_driver(vdx_gpio_driver, 1);
++
++MODULE_AUTHOR("Andres Heinloo <andres@gfz-potsdam.de>");
++MODULE_DESCRIPTION("DMP Vortex86 SX/DX/MX GPIO driver");
++MODULE_LICENSE("GPL v2");
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -688,6 +688,12 @@
+ 	  blocks of the TS-5500: DIO1, DIO2 and the LCD port, and the TS-5600
+ 	  LCD port.
+ 
++config GPIO_VDX
++	tristate "DMP Vortex86 SX/DX/MX GPIO support"
++	depends on PC104 && ISA_BUS_API
++	help
++	  Enables GPIO support for the DMP Vortex86 SX/DX/MX SoC.
++
+ config GPIO_WS16C48
+ 	tristate "WinSystems WS16C48 GPIO support"
+ 	depends on ISA_BUS_API
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -132,6 +132,7 @@
+ obj-$(CONFIG_GPIO_TZ1090)	+= gpio-tz1090.o
+ obj-$(CONFIG_GPIO_TZ1090_PDC)	+= gpio-tz1090-pdc.o
+ obj-$(CONFIG_GPIO_UCB1400)	+= gpio-ucb1400.o
++obj-$(CONFIG_GPIO_VDX)		+= gpio-vdx.o
+ obj-$(CONFIG_GPIO_VF610)	+= gpio-vf610.o
+ obj-$(CONFIG_GPIO_VIPERBOARD)	+= gpio-viperboard.o
+ obj-$(CONFIG_GPIO_VR41XX)	+= gpio-vr41xx.o
