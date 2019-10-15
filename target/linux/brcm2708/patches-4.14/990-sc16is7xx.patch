@@ -1,0 +1,65 @@
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/sc16is752-spi0-overlay.dts
+@@ -0,0 +1,41 @@
++// Definitions for SC16IS752 UART on spi0.0
++/dts-v1/;
++/plugin/;
++
++/ {
++    compatible = "brcm,bcm2835";
++
++    fragment@0 {
++        target = <&spi0>;
++        __overlay__ {
++             status = "okay";
++             spidev@0{
++                 status = "disabled";
++             };
++        };
++    };
++
++    fragment@1 {
++       target = <&spi0>;
++       __overlay__ {
++          #address-cells = <1>;
++          #size-cells = <0>;
++          status = "okay";
++
++          sc16is752: sc16is752@0 {
++             compatible = "nxp,sc16is752";
++             reg = <0>; /* CE0 */
++             spi-max-frequency = <1000000>;
++             interrupt-parent = <&gpio>;
++             interrupts = <25 0x2>; /* gpio 25, falling edge */
++             clocks = <&sc16is752_clk>;
++
++             sc16is752_clk: sc16is752_clk {
++                compatible = "fixed-clock";
++                #clock-cells = <0>;
++                clock-frequency = <1843200>;
++             };
++          };
++       };
++    };
++};
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -116,6 +116,7 @@
+ 	rra-digidac1-wm8741-audio.dtbo \
+ 	sc16is750-i2c.dtbo \
+ 	sc16is752-i2c.dtbo \
++	sc16is752-spi0.dtbo \
+ 	sc16is752-spi1.dtbo \
+ 	sdhost.dtbo \
+ 	sdio.dtbo \
+--- a/drivers/tty/serial/sc16is7xx.c
++++ b/drivers/tty/serial/sc16is7xx.c
+@@ -1389,6 +1389,8 @@
+ 	if (ret)
+ 		return ret;
+ 
++	dev_info(&spi->dev, "max speed %d Hz\n", spi->max_speed_hz);
++
+ 	if (spi->dev.of_node) {
+ 		const struct of_device_id *of_id =
+ 			of_match_device(sc16is7xx_dt_ids, &spi->dev);
