@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/drivers/gpio/gpio-vdx.c
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,199 @@
 +/*
 + * GPIO driver for the DMP Vortex86 SX/DX/MX SoC
 + * (C) 2019 Andres Heinloo, Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
@@ -28,10 +28,10 @@
 +#include <linux/moduleparam.h>
 +#include <linux/spinlock.h>
 +
-+#define VDX_NGPIO       24
++#define VDX_NGPIO       16
 +#define VDX_GPIO_DATA   0x78
 +#define VDX_GPIO_DIR    0x98
-+#define VDX_GPIO_EXTENT (VDX_NGPIO >> 3)
++#define VDX_GPIO_EXTENT 2
 +
 +/**
 + * struct vdx_gpio - GPIO device private data structure
@@ -70,10 +70,8 @@
 +
 +	if (offset < 8)
 +		outb(g->dir_state, VDX_GPIO_DIR);
-+	else if (offset < 16)
-+		outb(g->dir_state >> 8, VDX_GPIO_DIR + 1);
 +	else
-+		outb(g->dir_state >> 16, VDX_GPIO_DIR + 2);
++		outb(g->dir_state >> 8, VDX_GPIO_DIR + 1);
 +
 +	spin_unlock_irqrestore(&g->lock, flags);
 +}
@@ -99,10 +97,7 @@
 +	if (offset < 8)
 +		return !!(inb(VDX_GPIO_DATA) & mask);
 +
-+	if (offset < 16)
-+		return !!(inb(VDX_GPIO_DATA + 1) & mask >> 8);
-+
-+	return !!(inb(VDX_GPIO_DATA + 2) & mask >> 16);
++	return !!(inb(VDX_GPIO_DATA + 1) & mask >> 8);
 +}
 +
 +static void vdx_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -120,10 +115,8 @@
 +
 +	if (offset < 8)
 +		outb(g->out_state, VDX_GPIO_DATA);
-+	else if (offset < 16)
-+		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
 +	else
-+		outb(g->out_state >> 16, VDX_GPIO_DATA + 2);
++		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
 +
 +	spin_unlock_irqrestore(&g->lock, flags);
 +}
@@ -144,9 +137,6 @@
 +
 +	if ((*mask >> 8) & 0xFF)
 +		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
-+
-+	if ((*mask >> 16) & 0xFF)
-+		outb(g->out_state >> 16, VDX_GPIO_DATA + 2);
 +
 +	spin_unlock_irqrestore(&g->lock, flags);
 +}
@@ -184,14 +174,8 @@
 +	g->chip.get = vdx_gpio_get;
 +	g->chip.set = vdx_gpio_set;
 +	g->chip.set_multiple = vdx_gpio_set_multiple;
-+
-+	g->out_state = inb(VDX_GPIO_DATA) |
-+		       (inb(VDX_GPIO_DATA + 1) << 8) |
-+		       (inb(VDX_GPIO_DATA + 2) << 16);
-+
-+	g->dir_state = inb(VDX_GPIO_DIR) |
-+		       (inb(VDX_GPIO_DIR + 1) << 8) |
-+		       (inb(VDX_GPIO_DIR + 2) << 16);
++	g->out_state = inb(VDX_GPIO_DATA) | (inb(VDX_GPIO_DATA + 1) << 8);
++	g->dir_state = inb(VDX_GPIO_DIR) | (inb(VDX_GPIO_DIR + 1) << 8);
 +
 +	spin_lock_init(&g->lock);
 +
@@ -207,7 +191,7 @@
 +static struct isa_driver vdx_gpio_driver = {
 +	.probe = vdx_gpio_probe,
 +	.driver = {
-+		.name = "vdx-gpio"
++		.name = "gpio-vdx"
 +	},
 +};
 +

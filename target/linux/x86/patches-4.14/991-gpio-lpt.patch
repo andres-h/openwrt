@@ -1,0 +1,194 @@
+--- /dev/null
++++ b/drivers/gpio/gpio-lpt.c
+@@ -0,0 +1,166 @@
++/*
++ * GPIO driver for the LPT port
++ * (C) 2019 Andres Heinloo, Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License, version 2, as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ */
++#include <linux/bitops.h>
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/gpio/driver.h>
++#include <linux/io.h>
++#include <linux/ioport.h>
++#include <linux/interrupt.h>
++#include <linux/irqdesc.h>
++#include <linux/isa.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/spinlock.h>
++
++#define LPT_NGPIO    16
++#define LPT_GPIO_OUT 0x278
++#define LPT_GPIO_IN  0x279
++
++/**
++ * struct lpt_gpio - GPIO device private data structure
++ * @chip:	instance of the gpio_chip
++ * @lock:	synchronization lock to prevent I/O race conditions
++ * @out_state:	output bits state
++ */
++struct lpt_gpio {
++	struct gpio_chip chip;
++	spinlock_t lock;
++	unsigned out_state;
++};
++
++static int lpt_gpio_get_direction(struct gpio_chip *chip, unsigned offset)
++{
++	if (offset < 8)
++		return 0;
++
++	return 1;
++}
++
++static int lpt_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
++{
++	if (offset < 8)
++		return -EINVAL;
++
++	return 0;
++}
++
++static int lpt_gpio_direction_output(struct gpio_chip *chip,
++	unsigned offset, int value)
++{
++	if (offset > 7)
++		return -EINVAL;
++
++	chip->set(chip, offset, value);
++	return 0;
++}
++
++static int lpt_gpio_get(struct gpio_chip *chip, unsigned offset)
++{
++	struct lpt_gpio *const g = gpiochip_get_data(chip);
++	const unsigned mask = BIT(offset);
++
++	if (offset < 8)
++		return !!(g->out_state & mask);
++
++	return !!(inb(LPT_GPIO_IN) & mask >> 8);
++}
++
++static void lpt_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
++{
++	struct lpt_gpio *const g = gpiochip_get_data(chip);
++	const unsigned mask = BIT(offset);
++	unsigned long flags;
++
++	spin_lock_irqsave(&g->lock, flags);
++
++	if (value)
++		g->out_state |= mask;
++	else
++		g->out_state &= ~mask;
++
++	outb(g->out_state, LPT_GPIO_OUT);
++
++	spin_unlock_irqrestore(&g->lock, flags);
++}
++
++static void lpt_gpio_set_multiple(struct gpio_chip *chip,
++	unsigned long *mask, unsigned long *bits)
++{
++	struct lpt_gpio *const g = gpiochip_get_data(chip);
++	unsigned long flags;
++
++	spin_lock_irqsave(&g->lock, flags);
++
++	g->out_state &= ~*mask;
++	g->out_state |= *mask & *bits;
++
++	outb(g->out_state, LPT_GPIO_OUT);
++
++	spin_unlock_irqrestore(&g->lock, flags);
++}
++
++static int lpt_gpio_probe(struct device *dev, unsigned int id)
++{
++	struct lpt_gpio *g;
++	const char *const name = dev_name(dev);
++	int err;
++
++	g = devm_kzalloc(dev, sizeof(*g), GFP_KERNEL);
++	if (!g)
++		return -ENOMEM;
++
++	if (!devm_request_region(dev, LPT_GPIO_OUT, 2, name)) {
++		dev_err(dev, "Unable to lock port addresses (0x%X-0x%X)\n",
++			LPT_GPIO_OUT, LPT_GPIO_OUT + 2);
++		return -EBUSY;
++	}
++
++	g->chip.label = name;
++	g->chip.parent = dev;
++	g->chip.owner = THIS_MODULE;
++	g->chip.base = 16;
++	g->chip.ngpio = LPT_NGPIO;
++	g->chip.get_direction = lpt_gpio_get_direction;
++	g->chip.direction_input = lpt_gpio_direction_input;
++	g->chip.direction_output = lpt_gpio_direction_output;
++	g->chip.get = lpt_gpio_get;
++	g->chip.set = lpt_gpio_set;
++	g->chip.set_multiple = lpt_gpio_set_multiple;
++	g->out_state = inb(LPT_GPIO_OUT);
++
++	spin_lock_init(&g->lock);
++
++	err = devm_gpiochip_add_data(dev, &g->chip, g);
++	if (err) {
++		dev_err(dev, "GPIO registering failed (%d)\n", err);
++		return err;
++	}
++
++	return 0;
++}
++
++static struct isa_driver lpt_gpio_driver = {
++	.probe = lpt_gpio_probe,
++	.driver = {
++		.name = "gpio-lpt"
++	},
++};
++
++module_isa_driver(lpt_gpio_driver, 1);
++
++MODULE_AUTHOR("Andres Heinloo <andres@gfz-potsdam.de>");
++MODULE_DESCRIPTION("LPT GPIO driver");
++MODULE_LICENSE("GPL v2");
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -643,6 +643,12 @@
+ 	  To compile this driver as a module, choose M here: the module will
+ 	  be called gpio_it87
+ 
++config GPIO_LPT
++	tristate "LPT GPIO support"
++	depends on ISA_BUS_API
++	help
++	  Enables GPIO support for the LPT port.
++
+ config GPIO_SCH
+ 	tristate "Intel SCH/TunnelCreek/Centerton/Quark X1000 GPIO"
+ 	depends on (X86 || COMPILE_TEST) && PCI
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -69,6 +69,7 @@
+ obj-$(CONFIG_ARCH_LPC32XX)	+= gpio-lpc32xx.o
+ obj-$(CONFIG_GPIO_LP873X)	+= gpio-lp873x.o
+ obj-$(CONFIG_GPIO_LP87565)	+= gpio-lp87565.o
++obj-$(CONFIG_GPIO_LPT)		+= gpio-lpt.o
+ obj-$(CONFIG_GPIO_LYNXPOINT)	+= gpio-lynxpoint.o
+ obj-$(CONFIG_GPIO_MAX730X)	+= gpio-max730x.o
+ obj-$(CONFIG_GPIO_MAX7300)	+= gpio-max7300.o
