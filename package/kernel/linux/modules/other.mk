@@ -216,22 +216,6 @@ endef
 $(eval $(call KernelPackage,gpio-dev))
 
 
-define KernelPackage/gpio-lpt
-  SUBMENU:=$(OTHER_MENU)
-  DEPENDS:=@GPIO_SUPPORT
-  TITLE:=LPT GPIO support
-  KCONFIG:=CONFIG_GPIO_LPT
-  FILES:=$(LINUX_DIR)/drivers/gpio/gpio-lpt.ko
-  AUTOLOAD:=$(call AutoProbe,gpio-lpt)
-endef
-
-define KernelPackage/gpio-vdx/description
- Kernel module for LPT GPIO
-endef
-
-$(eval $(call KernelPackage,gpio-lpt))
-
-
 define KernelPackage/gpio-mcp23s08
   SUBMENU:=$(OTHER_MENU)
   TITLE:=Microchip MCP23xxx I/O expander
@@ -296,22 +280,6 @@ define KernelPackage/gpio-pcf857x/description
 endef
 
 $(eval $(call KernelPackage,gpio-pcf857x))
-
-
-define KernelPackage/gpio-vdx
-  SUBMENU:=$(OTHER_MENU)
-  DEPENDS:=@GPIO_SUPPORT
-  TITLE:=DMP Vortex86 SX/DX/MX GPIO support
-  KCONFIG:=CONFIG_GPIO_VDX
-  FILES:=$(LINUX_DIR)/drivers/gpio/gpio-vdx.ko
-  AUTOLOAD:=$(call AutoProbe,gpio-vdx)
-endef
-
-define KernelPackage/gpio-vdx/description
- Kernel module for DMP Vortex86 SX/DX/MX GPIO
-endef
-
-$(eval $(call KernelPackage,gpio-vdx))
 
 
 define KernelPackage/ppdev

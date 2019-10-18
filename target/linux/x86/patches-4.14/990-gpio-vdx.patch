@@ -1,9 +1,10 @@
 --- /dev/null
 +++ b/drivers/gpio/gpio-vdx.c
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,196 @@
 +/*
 + * GPIO driver for the DMP Vortex86 SX/DX/MX SoC
-+ * (C) 2019 Andres Heinloo, Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
++ *
++ * (C) 2019 Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
 + *
 + * This program is free software; you can redistribute it and/or modify
 + * it under the terms of the GNU General Public License, version 2, as
@@ -14,20 +15,19 @@
 + * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 + * General Public License for more details.
 + */
++
 +#include <linux/bitops.h>
 +#include <linux/device.h>
 +#include <linux/errno.h>
 +#include <linux/gpio/driver.h>
 +#include <linux/io.h>
 +#include <linux/ioport.h>
-+#include <linux/interrupt.h>
-+#include <linux/irqdesc.h>
 +#include <linux/isa.h>
 +#include <linux/kernel.h>
 +#include <linux/module.h>
-+#include <linux/moduleparam.h>
 +#include <linux/spinlock.h>
 +
++#define VDX_GPIO_BASE   0
 +#define VDX_NGPIO       16
 +#define VDX_GPIO_DATA   0x78
 +#define VDX_GPIO_DIR    0x98
@@ -59,9 +59,8 @@
 +{
 +	struct vdx_gpio *const g = gpiochip_get_data(chip);
 +	const unsigned mask = BIT(offset);
-+	unsigned long flags;
 +
-+	spin_lock_irqsave(&g->lock, flags);
++	spin_lock(&g->lock);
 +
 +	if (!dir)
 +		g->dir_state |= mask;
@@ -73,7 +72,7 @@
 +	else
 +		outb(g->dir_state >> 8, VDX_GPIO_DIR + 1);
 +
-+	spin_unlock_irqrestore(&g->lock, flags);
++	spin_unlock(&g->lock);
 +}
 +
 +static int vdx_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
@@ -104,9 +103,8 @@
 +{
 +	struct vdx_gpio *const g = gpiochip_get_data(chip);
 +	const unsigned mask = BIT(offset);
-+	unsigned long flags;
 +
-+	spin_lock_irqsave(&g->lock, flags);
++	spin_lock(&g->lock);
 +
 +	if (value)
 +		g->out_state |= mask;
@@ -118,16 +116,15 @@
 +	else
 +		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
 +
-+	spin_unlock_irqrestore(&g->lock, flags);
++	spin_unlock(&g->lock);
 +}
 +
 +static void vdx_gpio_set_multiple(struct gpio_chip *chip,
 +	unsigned long *mask, unsigned long *bits)
 +{
 +	struct vdx_gpio *const g = gpiochip_get_data(chip);
-+	unsigned long flags;
 +
-+	spin_lock_irqsave(&g->lock, flags);
++	spin_lock(&g->lock);
 +
 +	g->out_state &= ~*mask;
 +	g->out_state |= *mask & *bits;
@@ -138,7 +135,7 @@
 +	if ((*mask >> 8) & 0xFF)
 +		outb(g->out_state >> 8, VDX_GPIO_DATA + 1);
 +
-+	spin_unlock_irqrestore(&g->lock, flags);
++	spin_unlock(&g->lock);
 +}
 +
 +static int vdx_gpio_probe(struct device *dev, unsigned int id)
@@ -153,20 +150,20 @@
 +
 +	if (!devm_request_region(dev, VDX_GPIO_DATA, VDX_GPIO_EXTENT, name)) {
 +		dev_err(dev, "Unable to lock port addresses (0x%X-0x%X)\n",
-+			VDX_GPIO_DATA, VDX_GPIO_DATA + VDX_GPIO_EXTENT);
++			VDX_GPIO_DATA, VDX_GPIO_DATA + VDX_GPIO_EXTENT - 1);
 +		return -EBUSY;
 +	}
 +
 +	if (!devm_request_region(dev, VDX_GPIO_DIR, VDX_GPIO_EXTENT, name)) {
 +		dev_err(dev, "Unable to lock port addresses (0x%X-0x%X)\n",
-+			VDX_GPIO_DIR, VDX_GPIO_DIR + VDX_GPIO_EXTENT);
++			VDX_GPIO_DIR, VDX_GPIO_DIR + VDX_GPIO_EXTENT - 1);
 +		return -EBUSY;
 +	}
 +
 +	g->chip.label = name;
 +	g->chip.parent = dev;
 +	g->chip.owner = THIS_MODULE;
-+	g->chip.base = 0;
++	g->chip.base = VDX_GPIO_BASE;
 +	g->chip.ngpio = VDX_NGPIO;
 +	g->chip.get_direction = vdx_gpio_get_direction;
 +	g->chip.direction_input = vdx_gpio_direction_input;
