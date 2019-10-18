@@ -964,3 +964,4 @@ dtoverlay=pi3-disable-bt
 dtoverlay=sdtweak,enable=off
 #dtoverlay=sc16is752-i2c
 dtoverlay=sc16is752-spi0
+dtoverlay=rpi-relayboard

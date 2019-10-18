@@ -866,3 +866,19 @@ define KernelPackage/video-bcm2835/description
 endef
 
 $(eval $(call KernelPackage,video-bcm2835))
+
+
+define KernelPackage/gpio-relayboard
+  SUBMENU:=$(OTHER_MENU)
+  DEPENDS:=@GPIO_SUPPORT
+  TITLE:=Relayboard GPIO support
+  KCONFIG:=CONFIG_GPIO_RELAYBOARD
+  FILES:=$(LINUX_DIR)/drivers/gpio/gpio-relayboard.ko
+  AUTOLOAD:=$(call AutoProbe,gpio-relayboard)
+endef
+
+define KernelPackage/gpio-relayboard/description
+ Kernel module for Relayboard GPIO
+endef
+
+$(eval $(call KernelPackage,gpio-relayboard))

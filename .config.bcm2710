@@ -16,6 +16,7 @@ CONFIG_KERNEL_BUILD_USER="builder"
 # CONFIG_KERNEL_KALLSYMS is not set
 CONFIG_PACKAGE_block-mount=y
 CONFIG_PACKAGE_f2fsck=y
+CONFIG_PACKAGE_kmod-gpio-relayboard=y
 CONFIG_PACKAGE_kmod-i2c-bcm2835=y
 CONFIG_PACKAGE_kmod-i2c-core=y
 CONFIG_PACKAGE_kmod-ipt-conntrack-extra=y

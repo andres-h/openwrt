@@ -1,0 +1,231 @@
+--- /dev/null
++++ b/drivers/gpio/gpio-relayboard.c
+@@ -0,0 +1,170 @@
++/*
++ * GPIO driver for Raspberry Pi Relayboard
++ *
++ * (C) 2019 Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License, version 2, as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ */
++
++#include <linux/bitops.h>
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <linux/gpio/driver.h>
++#include <linux/i2c.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++
++#define RB_NAME         "rpi-relayboard"
++#define RB_NGPIO        4
++#define RB_GPIO_I2C_REG 0x06 /* pca953x direction register */
++
++/**
++ * struct rb_gpio - GPIO device private data structure
++ * @chip:	instance of the gpio_chip
++ * @client: 	I2C device pointer
++ * @lock:	synchronization lock to prevent I/O race conditions
++ * @buffer:	buffer for device register
++ */
++struct rb_gpio {
++	struct gpio_chip chip;
++	struct i2c_client *client;
++	struct mutex lock;
++	u8 buffer;
++};
++
++static int rb_gpio_get_direction(struct gpio_chip *chip, unsigned offset)
++{
++	/* This device is output only */
++	return 0;
++}
++
++static int rb_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
++{
++	/* This device is output only */
++	return -EINVAL;
++}
++
++static int rb_gpio_direction_output(struct gpio_chip *chip,
++	unsigned offset, int value)
++{
++	chip->set(chip, offset, value);
++	return 0;
++}
++
++static int rb_gpio_get(struct gpio_chip *chip, unsigned offset)
++{
++	struct rb_gpio *const g = gpiochip_get_data(chip);
++	const unsigned mask = BIT(offset);
++
++	return !(g->buffer & mask);
++}
++
++static void rb_gpio_set_mask_bits(struct gpio_chip *chip, u8 mask, u8 bits)
++{
++	struct rb_gpio *const g = gpiochip_get_data(chip);
++	u8 buffer;
++	int err;
++
++	mutex_lock(&g->lock);
++
++	buffer = g->buffer & ~mask;
++	buffer |= (mask & ~bits);
++
++	err = i2c_smbus_write_byte_data(g->client, RB_GPIO_I2C_REG, buffer);
++	if (!err)
++		g->buffer = buffer;
++
++	mutex_unlock(&g->lock);
++}
++
++static void rb_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
++{
++	rb_gpio_set_mask_bits(chip, BIT(offset), value ? BIT(offset) : 0);
++}
++
++static void rb_gpio_set_multiple(struct gpio_chip *chip, unsigned long *mask,
++				 unsigned long *bits)
++{
++	rb_gpio_set_mask_bits(chip, *mask, *bits);
++}
++
++static const struct of_device_id rb_gpio_of_match_table[] = {
++	{ .compatible = "rpi,rpi-relayboard" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, rb_gpio_of_match_table);
++
++static int rb_gpio_probe(struct i2c_client *client,
++			 const struct i2c_device_id *id)
++{
++	struct rb_gpio *g;
++	int err;
++
++	g = devm_kzalloc(&client->dev, sizeof(*g), GFP_KERNEL);
++	if (!g)
++		return -ENOMEM;
++
++	i2c_set_clientdata(client, g);
++
++	g->chip.label = dev_name(&client->dev);
++	g->chip.parent = &client->dev;
++	g->chip.owner = THIS_MODULE;
++	g->chip.base = -1;
++	g->chip.ngpio = RB_NGPIO;
++	g->chip.get_direction = rb_gpio_get_direction;
++	g->chip.direction_input = rb_gpio_direction_input;
++	g->chip.direction_output = rb_gpio_direction_output;
++	g->chip.get = rb_gpio_get;
++	g->chip.set = rb_gpio_set;
++	g->chip.set_multiple = rb_gpio_set_multiple;
++	g->client = client;
++	g->buffer = 0xff;
++
++	mutex_init(&g->lock);
++
++	err = gpiochip_add_data(&g->chip, g);
++	if (err < 0) {
++		dev_err(&client->dev, "GPIO registering failed (%d)\n", err);
++		return err;
++	}
++
++	return 0;
++}
++
++static int rb_gpio_remove(struct i2c_client *client)
++{
++	struct rb_gpio *const g = i2c_get_clientdata(client);
++
++	gpiochip_remove(&g->chip);
++
++	return 0;
++}
++
++static const struct i2c_device_id rb_gpio_id_table[] = {
++	{ "rpi-relayboard", },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, rb_gpio_id_table);
++
++static struct i2c_driver rb_gpio_driver = {
++	.driver = {
++		.name = RB_NAME,
++		.of_match_table = rb_gpio_of_match_table,
++	},
++	.probe = rb_gpio_probe,
++	.remove = rb_gpio_remove,
++	.id_table = rb_gpio_id_table,
++};
++module_i2c_driver(rb_gpio_driver);
++
++MODULE_AUTHOR("Andres Heinloo <andres@gfz-potsdam.de>");
++MODULE_DESCRIPTION("GPIO driver for Raspberry Pi Relayboard");
++MODULE_LICENSE("GPL v2");
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -832,6 +832,11 @@
+ 	  This driver provides an in-kernel interface to those GPIOs using
+ 	  platform-neutral GPIO calls.
+ 
++config GPIO_RELAYBOARD
++	tristate "Raspberry Pi Relayboard GPIO support"
++	help
++	  Enables GPIO support for the Raspberry Pi Relayboard.
++
+ config GPIO_SX150X
+ 	bool "Semtech SX150x I2C GPIO expander (deprecated)"
+ 	depends on PINCTRL && I2C=y
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -104,6 +104,7 @@
+ obj-$(CONFIG_GPIO_RDC321X)	+= gpio-rdc321x.o
+ obj-$(CONFIG_GPIO_RCAR)		+= gpio-rcar.o
+ obj-$(CONFIG_GPIO_REG)		+= gpio-reg.o
++obj-$(CONFIG_GPIO_RELAYBOARD)	+= gpio-relayboard.o
+ obj-$(CONFIG_ARCH_SA1100)	+= gpio-sa1100.o
+ obj-$(CONFIG_GPIO_SCH)		+= gpio-sch.o
+ obj-$(CONFIG_GPIO_SCH311X)	+= gpio-sch311x.o
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/rpi-relayboard-overlay.dts
+@@ -0,0 +1,21 @@
++/dts-v1/;
++/plugin/;
++/ {
++	compatible = "brcm,bcm2835";
++
++	fragment@0 {
++		target = <&i2c1>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++
++			relayboard@20 {
++				compatible = "rpi,rpi-relayboard";
++				reg = <0x20>;
++				gpio-controller;
++				#gpio-cells = <2>;
++			};
++		};
++	};
++};
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -111,6 +111,7 @@
+ 	rpi-ft5406.dtbo \
+ 	rpi-poe.dtbo \
+ 	rpi-proto.dtbo \
++	rpi-relayboard.dtbo \
+ 	rpi-sense.dtbo \
+ 	rpi-tv.dtbo \
+ 	rra-digidac1-wm8741-audio.dtbo \
