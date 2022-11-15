@@ -16,3 +16,19 @@ define KernelPackage/i2c-bcm2835/description
 endef
 
 $(eval $(call KernelPackage,i2c-bcm2835))
+
+
+define KernelPackage/gpio-relayboard
+  SUBMENU:=$(OTHER_MENU)
+  DEPENDS:=@GPIO_SUPPORT @TARGET_bcm27xx +kmod-i2c-core
+  TITLE:=Relayboard GPIO support
+  KCONFIG:=CONFIG_GPIO_RELAYBOARD
+  FILES:=$(LINUX_DIR)/drivers/gpio/gpio-relayboard.ko
+  AUTOLOAD:=$(call AutoProbe,gpio-relayboard)
+endef
+
+define KernelPackage/gpio-relayboard/description
+ Kernel module for Relayboard GPIO
+endef
+
+$(eval $(call KernelPackage,gpio-relayboard))
