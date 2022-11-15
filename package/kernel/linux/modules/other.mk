@@ -830,6 +830,24 @@ endef
 $(eval $(call KernelPackage,serial-8250-exar))
 
 
+define KernelPackage/serial-sc16is7xx
+  SUBMENU:=$(OTHER_MENU)
+  TITLE:=SC16IS7XX UARTs
+  KCONFIG:= CONFIG_SERIAL_SC16IS7XX \
+	CONFIG_SERIAL_SC16IS7XX_I2C=y \
+	CONFIG_SERIAL_SC16IS7XX_SPI=y
+  FILES:=$(LINUX_DIR)/drivers/tty/serial/sc16is7xx.ko
+  AUTOLOAD:=$(call AutoProbe,sc16is7xx)
+  DEPENDS:=+kmod-i2c-core +kmod-regmap-i2c +kmod-regmap-spi
+endef
+
+define KernelPackage/serial-sc16is7xx/description
+ Kernel module for SC16IS7XX serial ports
+endef
+
+$(eval $(call KernelPackage,serial-sc16is7xx))
+
+
 define KernelPackage/regmap-core
   SUBMENU:=$(OTHER_MENU)
   TITLE:=Generic register map support

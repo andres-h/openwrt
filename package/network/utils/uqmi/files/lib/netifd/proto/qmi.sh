@@ -242,7 +242,7 @@ proto_qmi_setup() {
 		fi
 
 		proto_notify_error "$interface" NETWORK_REGISTRATION_FAILED
-		proto_block_restart "$interface"
+		#proto_block_restart "$interface"
 		return 1
 	done
 
