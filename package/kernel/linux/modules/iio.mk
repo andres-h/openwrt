@@ -625,3 +625,19 @@ define KernelPackage/iio-bme680/description
 endef
 
 $(eval $(call KernelPackage,iio-dps310))
+
+
+define KernelPackage/iio-am335x-adc
+  SUBMENU:=$(IIO_MENU)
+  DEPENDS:=+kmod-iio-core +kmod-iio-kfifo-buf
+  TITLE:=Texas Instruments AM335x ADC driver
+  KCONFIG:=CONFIG_TI_AM335X_ADC
+  FILES:=$(LINUX_DIR)/drivers/iio/adc/ti_am335x_adc.ko
+  AUTOLOAD:=$(call AutoLoad,56,ti_am335x_adc)
+endef
+
+define KernelPackage/iio-ads1015/description
+ Support for Texas Instruments AM335x ADC.
+endef
+
+$(eval $(call KernelPackage,iio-am335x-adc))
