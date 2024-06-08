@@ -12,3 +12,6 @@ include distroconfig.txt
 
 [all]
 # Place your custom settings here.
+#dtoverlay=sdtweak,poll_once=on
+#dtoverlay=sc16is752-i2c
+#dtoverlay=sc16is752-spi0
