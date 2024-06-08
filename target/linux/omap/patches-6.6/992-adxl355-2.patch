@@ -1,0 +1,277 @@
+--- a/drivers/iio/accel/adxl355_core.c
++++ b/drivers/iio/accel/adxl355_core.c
+@@ -195,6 +195,20 @@
+ 	[10] = {3, 906000},
+ };
+ 
++static const int adxl355_periods[] = {
++	[0] = 250000,
++	[1] = 500000,
++	[2] = 1000000,
++	[3] = 2000000,
++	[4] = 4000000,
++	[5] = 8000000,
++	[6] = 16000000,
++	[7] = 32000000,
++	[8] = 64000000,
++	[9] = 127991809,
++	[10] = 256016385,
++};
++
+ static const int adxl355_hpf_3db_multipliers[] = {
+ 	0,
+ 	247000,
+@@ -249,6 +263,44 @@
+ 	} __aligned(IIO_DMA_MINALIGN);
+ };
+ 
++static int adxl355_update_bits(struct adxl355_data *data, unsigned int reg,
++			       unsigned int mask, unsigned int val)
++{
++	int ret;
++	unsigned int tmp, orig;
++
++	ret = regmap_read(data->regmap, reg, &orig);
++	if (ret)
++		return ret;
++
++	tmp = orig & ~mask;
++	tmp |= val & mask;
++
++	if (tmp != orig) {
++		int i;
++
++		for (i = 0; i < 10; ++i) {
++			dev_info(data->dev, "%02x: %02x -> %02x\n", reg, orig, tmp);
++			ret = regmap_write(data->regmap, reg, tmp);
++			if (ret)
++				return ret;
++
++			ret = regmap_read(data->regmap, reg, &orig);
++			if (ret)
++				return ret;
++
++			if (tmp == orig)
++				break;
++
++			dev_warn(data->dev, "%02x: %02x (expected %02x) %d\n", reg, orig, tmp, i);
++		}
++	} else {
++		dev_info(data->dev, "%02x: %02x -> %02x (no change)\n", reg, orig, tmp);
++	}
++
++	return ret;
++}
++
+ static int adxl355_set_op_mode(struct adxl355_data *data,
+ 			       enum adxl355_op_mode op_mode)
+ {
+@@ -257,8 +309,8 @@
+ 	if (data->op_mode == op_mode)
+ 		return 0;
+ 
+-	ret = regmap_update_bits(data->regmap, ADXL355_POWER_CTL_REG,
+-				 ADXL355_POWER_CTL_MODE_MSK, op_mode);
++	ret = adxl355_update_bits(data, ADXL355_POWER_CTL_REG,
++				  ADXL355_POWER_CTL_MODE_MSK, op_mode);
+ 	if (ret)
+ 		return ret;
+ 
+@@ -273,12 +325,30 @@
+ 	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
+ 	struct adxl355_data *data = iio_priv(indio_dev);
+ 	int ret;
++	int i;
+ 
+ 	mutex_lock(&data->lock);
+-	ret = regmap_update_bits(data->regmap, ADXL355_POWER_CTL_REG,
+-				 ADXL355_POWER_CTL_DRDY_MSK,
+-				 FIELD_PREP(ADXL355_POWER_CTL_DRDY_MSK,
+-					    state ? 0 : 1));
++
++	if (state) {
++		/* flush FIFO */
++		for (i = 0; i < 200; ++i) {
++			ret = regmap_noinc_read(data->regmap, ADXL355_FIFO_DATA_REG,
++						&data->buffer.buf[1], 3);
++
++			if (ret)
++				goto err_unlock;
++
++			if (data->buffer.buf[3] & 0x2)
++				break;
++		}
++	}
++
++	ret = adxl355_update_bits(data, ADXL355_POWER_CTL_REG,
++				  ADXL355_POWER_CTL_DRDY_MSK,
++				  FIELD_PREP(ADXL355_POWER_CTL_DRDY_MSK,
++					     state ? 0 : 1));
++
++err_unlock:
+ 	mutex_unlock(&data->lock);
+ 
+ 	return ret;
+@@ -342,9 +412,9 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = regmap_update_bits(data->regmap, ADXL355_POWER_CTL_REG,
+-				 ADXL355_POWER_CTL_DRDY_MSK,
+-				 FIELD_PREP(ADXL355_POWER_CTL_DRDY_MSK, 1));
++	ret = adxl355_update_bits(data, ADXL355_POWER_CTL_REG,
++				  ADXL355_POWER_CTL_DRDY_MSK,
++				  FIELD_PREP(ADXL355_POWER_CTL_DRDY_MSK, 1));
+ 	if (ret)
+ 		return ret;
+ 
+@@ -399,9 +469,9 @@
+ 	if (ret)
+ 		goto err_unlock;
+ 
+-	ret = regmap_update_bits(data->regmap, ADXL355_FILTER_REG,
+-				 ADXL355_FILTER_ODR_MSK,
+-				 FIELD_PREP(ADXL355_FILTER_ODR_MSK, odr));
++	ret = adxl355_update_bits(data, ADXL355_FILTER_REG,
++				  ADXL355_FILTER_ODR_MSK,
++				  FIELD_PREP(ADXL355_FILTER_ODR_MSK, odr));
+ 	if (ret)
+ 		goto err_set_opmode;
+ 
+@@ -438,9 +508,9 @@
+ 	if (ret)
+ 		goto err_unlock;
+ 
+-	ret = regmap_update_bits(data->regmap, ADXL355_FILTER_REG,
+-				 ADXL355_FILTER_HPF_MSK,
+-				 FIELD_PREP(ADXL355_FILTER_HPF_MSK, hpf));
++	ret = adxl355_update_bits(data, ADXL355_FILTER_REG,
++				  ADXL355_FILTER_HPF_MSK,
++				  FIELD_PREP(ADXL355_FILTER_HPF_MSK, hpf));
+ 	if (ret)
+ 		goto err_set_opmode;
+ 
+@@ -621,6 +691,25 @@
+ 	}
+ }
+ 
++static int adxl355_reg_access(struct iio_dev *indio_dev,
++			      unsigned int reg,
++			      unsigned int writeval,
++			      unsigned int *readval)
++{
++	struct adxl355_data *data = iio_priv(indio_dev);
++	int ret;
++
++	if (reg > 0x2f)
++		return -EINVAL;
++
++	if (readval)
++		ret = regmap_read(data->regmap, reg, readval);
++	else
++		ret = regmap_write(data->regmap, reg, writeval);
++
++	return ret;
++}
++
+ static const unsigned long adxl355_avail_scan_masks[] = {
+ 	GENMASK(3, 0),
+ 	0
+@@ -630,6 +719,7 @@
+ 	.read_raw	= adxl355_read_raw,
+ 	.write_raw	= adxl355_write_raw,
+ 	.read_avail	= &adxl355_read_avail,
++	.debugfs_reg_access = &adxl355_reg_access,
+ };
+ 
+ static const struct iio_trigger_ops adxl355_trigger_ops = {
+@@ -643,6 +733,8 @@
+ 	struct iio_dev *indio_dev = pf->indio_dev;
+ 	struct adxl355_data *data = iio_priv(indio_dev);
+ 	int ret;
++	s64 timestamp = pf->timestamp;
++	int i, j;
+ 
+ 	mutex_lock(&data->lock);
+ 
+@@ -659,28 +751,62 @@
+ 	 * accelaration data of x, y, and z axis. It also includes 2 bytes for
+ 	 * temperature data.
+ 	 */
+-	ret = regmap_bulk_read(data->regmap, ADXL355_XDATA3_REG,
+-			       &data->buffer.buf[1], 3);
+-	if (ret)
+-		goto out_unlock_notify;
++	for (i = 0; i < 200; ++i) {
++		for (j = 0; j < 200; ++j) {
++			ret = regmap_noinc_read(data->regmap, ADXL355_FIFO_DATA_REG,
++						&data->buffer.buf[1], 3);
++
++			if (ret)
++				goto out_unlock_notify;
++
++			if (data->buffer.buf[3] & 0x2) {
++				/* FIFO is empty */
++				goto out_unlock_notify;
++			}
++
++			if (data->buffer.buf[3] & 0x1) {
++			       	/* X axis */
++				break;
++			}
++		}
+ 
+-	ret = regmap_bulk_read(data->regmap, ADXL355_YDATA3_REG,
+-			       &data->buffer.buf[5], 3);
+-	if (ret)
+-		goto out_unlock_notify;
++#if 0
++		if (j > 0)
++			dev_warn(data->dev, "FIFO sync %d\n", j);
++#endif
++
++		ret = regmap_noinc_read(data->regmap, ADXL355_FIFO_DATA_REG,
++					&data->buffer.buf[5], 3);
++
++		if (ret)
++			goto out_unlock_notify;
++
++		if (data->buffer.buf[3] & 0x2) {
++			dev_warn(data->dev, "unexpected end of FIFO\n");
++			goto out_unlock_notify;
++		}
+ 
+-	ret = regmap_bulk_read(data->regmap, ADXL355_ZDATA3_REG,
+-			       &data->buffer.buf[9], 3);
+-	if (ret)
+-		goto out_unlock_notify;
++		ret = regmap_noinc_read(data->regmap, ADXL355_FIFO_DATA_REG,
++					&data->buffer.buf[9], 3);
+ 
+-	ret = regmap_bulk_read(data->regmap, ADXL355_TEMP2_REG,
+-			       &data->buffer.buf[12], 2);
+-	if (ret)
+-		goto out_unlock_notify;
++		if (ret)
++			goto out_unlock_notify;
++
++		if (data->buffer.buf[3] & 0x2) {
++			dev_warn(data->dev, "unexpected end of FIFO\n");
++			goto out_unlock_notify;
++		}
+ 
+-	iio_push_to_buffers_with_timestamp(indio_dev, &data->buffer,
+-					   pf->timestamp);
++		ret = regmap_bulk_read(data->regmap, ADXL355_TEMP2_REG,
++				       &data->buffer.buf[12], 2);
++		if (ret)
++			goto out_unlock_notify;
++
++		timestamp += adxl355_periods[data->odr];
++
++		iio_push_to_buffers_with_timestamp(indio_dev, &data->buffer,
++						   timestamp);
++	}
+ 
+ out_unlock_notify:
+ 	mutex_unlock(&data->lock);
