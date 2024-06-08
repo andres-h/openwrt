@@ -16,3 +16,5 @@ include distroconfig.txt
 #dtoverlay=sc16is752-i2c
 #dtoverlay=sc16is752-spi0
 #dtoverlay=rpi-relayboard
+#dtoverlay=adxl355-spi0
+#dtoverlay=dps310

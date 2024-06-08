@@ -580,3 +580,68 @@ define KernelPackage/iio-ti-am335x-adc/description
 endef
 
 $(eval $(call KernelPackage,iio-ti-am335x-adc))
+
+define KernelPackage/iio-adxl355
+  SUBMENU:=$(IIO_MENU)
+  TITLE:=Analog Devices ADXL355 3-axis accelerometer driver
+  DEPENDS:=+kmod-iio-core +kmod-regmap-core +kmod-industrialio-triggered-buffer
+  KCONFIG:= CONFIG_ADXL355
+  FILES:=$(LINUX_DIR)/drivers/iio/accel/adxl355_core.ko
+  AUTOLOAD:=$(call AutoLoad,56,adxl355)
+endef
+
+define KernelPackage/iio-adxl355/description
+ Support for Analog Devices ADXL355 3-axis accelerometer.
+endef
+
+$(eval $(call KernelPackage,iio-adxl355))
+
+
+define KernelPackage/iio-adxl355-i2c
+  SUBMENU:=$(IIO_MENU)
+  TITLE:=Analog Devices ADXL355 3-axis accelerometer driver (I2C)
+  DEPENDS:=+kmod-iio-adxl355 +kmod-i2c-core +kmod-regmap-i2c
+  KCONFIG:= CONFIG_ADXL355_I2C
+  FILES:=$(LINUX_DIR)/drivers/iio/accel/adxl355_i2c.ko
+  AUTOLOAD:=$(call AutoLoad,56,adxl355_i2c)
+endef
+
+define KernelPackage/iio-adxl355/description
+ Support for Analog Devices ADXL355 3-axis accelerometer
+ connected via I2C.
+endef
+
+$(eval $(call KernelPackage,iio-adxl355-i2c))
+
+
+define KernelPackage/iio-adxl355-spi
+  SUBMENU:=$(IIO_MENU)
+  TITLE:=Analog Devices ADXL355 3-axis accelerometer driver (SPI)
+  DEPENDS:=+kmod-iio-adxl355 +kmod-regmap-spi
+  KCONFIG:= CONFIG_ADXL355_SPI
+  FILES:=$(LINUX_DIR)/drivers/iio/accel/adxl355_spi.ko
+  AUTOLOAD:=$(call AutoLoad,56,adxl355_spi)
+endef
+
+define KernelPackage/iio-adxl355/description
+ Support for Analog Devices ADXL355 3-axis accelerometer
+ connected via SPI.
+endef
+
+$(eval $(call KernelPackage,iio-adxl355-spi))
+
+
+define KernelPackage/iio-dps310
+  SUBMENU:=$(IIO_MENU)
+  TITLE:=Infineon DPS310 pressure and temperature sensor
+  DEPENDS:=+kmod-i2c-core +kmod-iio-core +kmod-regmap-i2c
+  KCONFIG:=CONFIG_DPS310
+  FILES:=$(LINUX_DIR)/drivers/iio/pressure/dps310.ko
+  AUTOLOAD:=$(call AutoLoad,56,dps310)
+endef
+
+define KernelPackage/iio-bme680/description
+ Support for Infineon DPS310 pressure and temperature sensor.
+endef
+
+$(eval $(call KernelPackage,iio-dps310))
