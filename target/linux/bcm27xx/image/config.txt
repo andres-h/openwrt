@@ -15,3 +15,4 @@ include distroconfig.txt
 #dtoverlay=sdtweak,poll_once=on
 #dtoverlay=sc16is752-i2c
 #dtoverlay=sc16is752-spi0
+#dtoverlay=rpi-relayboard

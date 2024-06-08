@@ -23,6 +23,7 @@ CONFIG_MAKE_TOOLCHAIN=y
 CONFIG_PACKAGE_cgi-io=y
 CONFIG_PACKAGE_block-mount=y
 CONFIG_PACKAGE_f2fsck=y
+CONFIG_PACKAGE_kmod-gpio-relayboard=m
 CONFIG_PACKAGE_kmod-i2c-bcm2835=y
 CONFIG_PACKAGE_kmod-i2c-core=y
 CONFIG_PACKAGE_kmod-regmap-core=y
