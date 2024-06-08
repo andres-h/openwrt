@@ -1,0 +1,84 @@
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/adxl355-spi0-overlay.dts
+@@ -0,0 +1,36 @@
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++
++			adxl355: adxl355@0 {
++				compatible = "adi,adxl355";
++				reg = <0>;
++				spi-max-frequency = <1000000>;
++				interrupt-parent = <&gpio>;
++				interrupts = <25 1>; /* IRQ_TYPE_EDGE_RISING */
++				interrupt-names = "DRDY";
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&spidev0>;
++		__overlay__ {
++			status = "disabled";
++		};
++	};
++
++	__overrides__ {
++		addr = <&adxl355>,"reg:0";
++		interrupt = <&adxl355>,"interrupts:0";
++	};
++};
+--- /dev/null
++++ b/arch/arm/boot/dts/overlays/dps310-overlay.dts
+@@ -0,0 +1,24 @@
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835";
++
++	fragment@0 {
++		target = <&i2c1>;
++		__overlay__ {
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "okay";
++
++			dps310: dps310@77 {
++				compatible = "infineon,dps310";
++				reg = <0x77>;
++			};
++		};
++	};
++
++	__overrides__ {
++		addr = <&dps310>,"reg:0";
++	};
++};
+--- a/arch/arm/boot/dts/overlays/Makefile
++++ b/arch/arm/boot/dts/overlays/Makefile
+@@ -13,6 +13,7 @@
+ 	ads7846.dtbo \
+ 	adv7282m.dtbo \
+ 	adv728x-m.dtbo \
++	adxl355-spi0.dtbo \
+ 	akkordion-iqdacplus.dtbo \
+ 	allo-boss-dac-pcm512x-audio.dtbo \
+ 	allo-boss2-dac-audio.dtbo \
+@@ -45,6 +46,7 @@
+ 	dpi18.dtbo \
+ 	dpi18cpadhi.dtbo \
+ 	dpi24.dtbo \
++	dps310.dtbo \
+ 	draws.dtbo \
+ 	dwc-otg.dtbo \
+ 	dwc2.dtbo \
