@@ -1,0 +1,10 @@
+--- a/drivers/net/phy/smsc.c
++++ b/drivers/net/phy/smsc.c
+@@ -136,6 +136,7 @@
+ 
+ static int smsc_phy_reset(struct phy_device *phydev)
+ {
++	msleep(1);
+ 	int rc = phy_read(phydev, MII_LAN83C185_SPECIAL_MODES);
+ 	if (rc < 0)
+ 		return rc;
