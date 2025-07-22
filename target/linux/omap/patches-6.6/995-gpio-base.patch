@@ -1,0 +1,11 @@
+--- a/drivers/gpio/gpio-omap.c
++++ b/drivers/gpio/gpio-omap.c
+@@ -1055,7 +1055,7 @@
+ 		if (!label)
+ 			return -ENOMEM;
+ 		bank->chip.label = label;
+-		bank->chip.base = -1;
++		bank->chip.base = gpio;
+ 	}
+ 	bank->chip.ngpio = bank->width;
+ 
